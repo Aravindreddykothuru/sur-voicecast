@@ -74,7 +74,14 @@ def get_current_user(
         return user
 
     # Dev stub: no route or test that predates real auth needs to change.
+    # Off in production, where it would be an unauthenticated takeover path
+    # -- a header alone identifies (and silently creates) any account.
     settings = get_settings()
+    if not settings.dev_email_auth_enabled:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please log in.",
+        )
     email = (x_user_email or settings.dev_default_user_email).strip().lower()
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if user is None:

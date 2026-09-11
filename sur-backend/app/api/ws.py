@@ -45,7 +45,10 @@ def _caller_owns_project(project_id: str, token: str | None, user_email: str | N
             user_id = decode_access_token(token)
             if user_id:
                 user = db.get(User, user_id)
-        elif user_email:
+        elif user_email and get_settings().dev_email_auth_enabled:
+            # Same stub as get_current_user, and gated the same way: in
+            # production an email query parameter is not an identity, it is
+            # just a string the caller chose.
             user = db.execute(
                 select(User).where(User.email == user_email.strip().lower())
             ).scalar_one_or_none()

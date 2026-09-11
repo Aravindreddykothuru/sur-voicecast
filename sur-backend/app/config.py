@@ -170,6 +170,22 @@ class Settings(BaseSettings):
     # test working unchanged while /api/auth/{signup,login} issue real,
     # password-verified tokens for anyone who goes through them.
     dev_default_user_email: str = "dev@sur.local"
+
+    @property
+    def dev_email_auth_enabled(self) -> bool:
+        """Whether the X-User-Email identity stub is accepted.
+
+        Never in production, and deliberately with no override. The stub
+        authenticates on a header alone: `curl -H "X-User-Email: someone@..."`
+        with no token and no password returns that user's data, and creates
+        the account if it does not exist. That is fine for a local dev tool
+        and is unauthenticated account takeover anywhere else.
+
+        Derived from ENVIRONMENT rather than configurable, because a
+        security control with an "enable it anyway" flag is one env var away
+        from being off in the place it matters.
+        """
+        return self.environment.strip().lower() != "production"
     # A real deployment MUST override this (env var, not this default) --
     # anyone who knows it can forge a valid token for any user id. Kept as a
     # plain default (not a hard-fail) only because this is still a
