@@ -11,10 +11,29 @@ name: CI
 # sur-backend/tests/conftest.py and test_schema_matches_migrations.py).
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
 
 jobs:
+  # The same scan the pre-commit hook runs, enforced server-side too: a hook
+  # only protects people who installed it.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install detect-secrets
+        run: pip install detect-secrets
+
+      - name: Scan for credentials
+        run: detect-secrets-hook --baseline .secrets.baseline $(git ls-files)
+
   backend:
     runs-on: ubuntu-latest
     services:
@@ -58,9 +77,33 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
+      # Run migrations as their own step, not just implicitly via the
+      # conftest fixture: a broken migration chain should fail here with a
+      # clear signal, distinct from a test assertion failing.
+      - name: Apply migrations to a clean database
+        working-directory: sur-backend
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: alembic upgrade head
+
+      - name: Assert exactly one migration head
+        working-directory: sur-backend
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: |
+          heads=$(alembic heads | grep -c '(head)')
+          echo "migration heads: $heads"
+          test "$heads" -eq 1 || { echo "::error::expected 1 head, found $heads -- parallel migrations need merging"; exit 1; }
+
       - name: Run tests
         working-directory: sur-backend
         run: pytest -q
+
+      # Reported separately so schema drift is unmistakable in the run
+      # summary rather than buried among the other failures.
+      - name: Schema matches migrations (drift check)
+        working-directory: sur-backend
+        run: pytest tests/test_schema_matches_migrations.py -q
 
   frontend:
     runs-on: ubuntu-latest
