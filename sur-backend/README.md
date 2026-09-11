@@ -182,16 +182,45 @@ requirements.txt / requirements-ml.txt / requirements-tts.txt
 
 ```bash
 pip install -r requirements-dev.txt
+docker compose -f docker-compose.test.yml up -d          # Postgres on :5434
+export TEST_DATABASE_URL=postgresql+psycopg2://postgres:test@localhost:5434/test  # pragma: allowlist secret
 pytest -v --cov=app
 ```
 
-The suite needs no Docker, no GPU, and no network: SQLite in-memory
-replaces Postgres, `celery_app.conf.task_always_eager = True` replaces a
-real broker/worker, and an in-memory storage double replaces MinIO/S3 (all
-wired up in `tests/conftest.py`). Coverage includes each provider's mock
-implementation, the registry's mock/real selection, the full seven-stage
-pipeline end-to-end, idempotency of `chunk_and_diarize` under a retry, and
-the API's project/segment endpoints.
+The suite runs against **real Postgres**, and `TEST_DATABASE_URL` is
+required with no default -- a `sqlite://` value is a hard error, and so is
+a URL pointing at a production host, because the fixtures reset state with
+`TRUNCATE ... CASCADE` between tests.
+
+That requirement is not incidental. The suite used to run on SQLite in
+memory, which does not enforce column widths, foreign keys, NOT NULL,
+unique constraints or CHECK constraints. `projects.status` shipped as
+`VARCHAR(10)` -- wide enough for `"processing"` -- and 137 tests stayed
+green until a real project tried to store `"awaiting_language_confirmation"`
+and Postgres rejected it in production. Anything that reintroduces a
+SQLite fallback reopens that class of bug.
+
+Everything else still needs no GPU and no network:
+`celery_app.conf.task_always_eager = True` replaces a real broker/worker,
+and an in-memory storage double replaces MinIO/S3. Coverage includes each
+provider's mock implementation, the registry's mock/real selection, the
+full seven-stage pipeline end-to-end, idempotency of `chunk_and_diarize`
+under a retry, the API's project/segment endpoints, cross-user
+authorization on every id-bearing route, and a migration-drift check that
+fails if `app/models/` and `alembic/versions/` disagree.
+
+## Secret scanning — run this once per clone
+
+`.pre-commit-config.yaml` runs detect-secrets on every commit, but git
+hooks live in `.git/hooks`, which **is not cloned**. Until you run:
+
+```bash
+pip install pre-commit && pre-commit install
+```
+
+a fresh clone has no scanning at all, and a commit containing an AWS key
+succeeds silently. Verify it is active by checking that
+`.git/hooks/pre-commit` exists.
 
 ## Migrations
 
