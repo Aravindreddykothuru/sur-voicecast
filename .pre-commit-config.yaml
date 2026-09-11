@@ -1,0 +1,37 @@
+# Secret scan on every commit. Direct response to a live Supabase Postgres
+# connection string (host, user, password, db) having been pasted in
+# plaintext into a shell command during a debugging session -- this exists
+# so a credential in a diff is a blocked commit, not a rotation email later.
+#
+# detect-secrets rather than gitleaks: gitleaks' hook downloads a prebuilt
+# Go binary from GitHub releases, which fails on this network
+# ("BadZipFile: File is not a zip file") and then blocks every commit for
+# the wrong reason. detect-secrets installs from PyPI, which works here.
+#
+# Setup (once per clone):
+#   pip install pre-commit
+#   pre-commit install
+#
+# Runs automatically on `git commit` from then on. Run it on demand with:
+#   pre-commit run --all-files
+#
+# When it flags something that is genuinely not a secret, audit and record
+# it in the baseline rather than deleting the hook:
+#   detect-secrets scan --baseline .secrets.baseline
+#   detect-secrets audit .secrets.baseline
+repos:
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        # Lockfiles and binary design assets produce only false positives.
+        exclude: |
+          (?x)^(
+            .*package-lock\.json|
+            .*pnpm-lock\.yaml|
+            .*\.png|
+            .*\.jpg|
+            .*\.mp4|
+            .*\.wav
+          )$
