@@ -8,7 +8,9 @@ without touching pipeline code.
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine.url import make_url
 
 ProviderMode = Literal["mock", "real"]
 
@@ -131,6 +133,36 @@ class Settings(BaseSettings):
     @property
     def asr_autodetect(self) -> bool:
         return self.asr_language == "auto"
+
+    # Hosts that hold real user data. A process that is not explicitly
+    # ENVIRONMENT=production must never open a connection to one of these.
+    # This is a crash, not a warning, because the convention "don't point
+    # your local .env at prod" already failed once: migrations were applied
+    # and rows were deleted against the database holding real users during a
+    # debugging session, because dev and prod were the same instance.
+    production_db_hosts: str = "pooler.supabase.com,db.bwwdpjkdxmgfdlyffgzr.supabase.co"
+
+    @property
+    def production_db_host_list(self) -> list[str]:
+        return [h.strip() for h in self.production_db_hosts.split(",") if h.strip()]
+
+    @model_validator(mode="after")
+    def _refuse_production_database_outside_production(self) -> "Settings":
+        if self.environment.strip().lower() == "production":
+            return self
+        host = (make_url(self.database_url).host or "").lower()
+        for prod_host in self.production_db_host_list:
+            if prod_host.lower() in host:
+                raise RuntimeError(
+                    f"REFUSING TO START: DATABASE_URL points at the production host "
+                    f"{host!r} but ENVIRONMENT={self.environment!r}, not 'production'.\n"
+                    "This process would read and write real user data. Point "
+                    "DATABASE_URL at your dev database (see docker-compose.test.yml "
+                    "or a second Supabase project), or set ENVIRONMENT=production if "
+                    "this really is the production deployment.\n"
+                    "Production credentials belong in deploy config, never in a local .env."
+                )
+        return self
 
     # --- Auth ---
     # Falls back to the X-User-Email dev stub (app/core/security.py) when no
