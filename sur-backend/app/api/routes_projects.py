@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.core.security import get_current_user
 from app.db import get_db
 from app.deps import get_owned_project
+from app.models.base import is_uuid
 from app.models.export_job import ExportJob
 from app.models.project import Project, ProjectStatus
 from app.models.segment import Segment
@@ -130,7 +131,10 @@ def confirm_upload(
     silently accepted and failing deep in extract_audio or timing out a
     worker later. See CONTRACTS.md #5.
     """
-    video = db.get(SourceVideo, body.source_video_id)
+    # source_video_id arrives in the request body, so it gets the same
+    # malformed-id guard as a path param: Postgres's uuid type raises on a
+    # non-uuid string, which would surface as a 500 instead of this 404.
+    video = db.get(SourceVideo, body.source_video_id) if is_uuid(body.source_video_id) else None
     if video is None or video.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Source video not found")
 

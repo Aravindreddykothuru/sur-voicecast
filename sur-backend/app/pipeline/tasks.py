@@ -40,6 +40,7 @@ from app.pipeline.events import (
     emit_stage_progress,
     emit_stage_started,
 )
+from app.models.base import is_uuid
 from app.providers.base import EmotionResult, SpeakerChunk, SynthesisRequest
 from app.providers.registry import (
     get_asr_provider,
@@ -69,7 +70,10 @@ def _target_lang(project: Project) -> str:
 
 def _mark_project_failed(project_id: str, stage: str, exc: Exception) -> None:
     with session_scope() as db:
-        project = db.get(Project, project_id)
+        # Guard first: this runs inside the exception handler, so a DataError
+        # from a malformed id would replace the real failure with a confusing
+        # one and lose the original error entirely.
+        project = db.get(Project, project_id) if is_uuid(project_id) else None
         if project:
             project.status = ProjectStatus.failed
             project.error_message = f"{stage}: {exc}"
@@ -92,7 +96,9 @@ def _set_stage(db, project: Project, stage: str) -> None:
 def _require_project(db, project_id: str) -> Project:
     """Fail loudly and legibly if the project vanished mid-pipeline, rather
     than letting every stage trip over `NoneType has no attribute ...`."""
-    project = db.get(Project, project_id)
+    # ValueError, not DataError: a malformed id can never become valid, and
+    # ValueError is in _PERMANENT so Celery won't burn retries on it.
+    project = db.get(Project, project_id) if is_uuid(project_id) else None
     if project is None:
         raise ValueError(f"project {project_id} not found")
     return project
@@ -100,7 +106,7 @@ def _require_project(db, project_id: str) -> Project:
 
 def _require_audio_key(db, source_video_id: str) -> str:
     """Returns the extracted-audio storage key, or fails with a clear message."""
-    video = db.get(SourceVideo, source_video_id)
+    video = db.get(SourceVideo, source_video_id) if is_uuid(source_video_id) else None
     if video is None:
         raise ValueError(f"source video {source_video_id} not found")
     if not video.audio_storage_key:
@@ -119,8 +125,8 @@ def extract_audio(self, project_id: str, source_video_id: str) -> str:
     emit_stage_started(project_id, stage)
     try:
         with session_scope() as db:
-            project = db.get(Project, project_id)
-            video = db.get(SourceVideo, source_video_id)
+            project = db.get(Project, project_id) if is_uuid(project_id) else None
+            video = db.get(SourceVideo, source_video_id) if is_uuid(source_video_id) else None
             if project is None or video is None:
                 raise ValueError("project or source video not found")
             _set_stage(db, project, stage)
@@ -195,8 +201,8 @@ def chunk_and_diarize(self, project_id: str, source_video_id: str) -> str:
     emit_stage_started(project_id, stage)
     try:
         with session_scope() as db:
-            project = db.get(Project, project_id)
-            video = db.get(SourceVideo, source_video_id)
+            project = db.get(Project, project_id) if is_uuid(project_id) else None
+            video = db.get(SourceVideo, source_video_id) if is_uuid(source_video_id) else None
             if project is None or video is None or not video.audio_storage_key:
                 raise ValueError("source video audio not extracted yet")
             _set_stage(db, project, stage)
