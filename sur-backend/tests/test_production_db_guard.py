@@ -56,3 +56,42 @@ def test_guard_is_case_insensitive_about_the_environment_name():
             environment="development",
             database_url="postgresql+psycopg2://u:p@AWS-0-AP-SOUTHEAST-2.POOLER.SUPABASE.COM:5432/postgres",  # pragma: allowlist secret
         )
+
+
+# ── The other direction: the test suite must refuse production ──────────
+#
+# Settings' guard above has a deliberate escape hatch -- ENVIRONMENT=production
+# is allowed through, because production has to connect to production. The
+# test suite has no such case. conftest resets state with TRUNCATE ... CASCADE
+# on every table after every test, so aiming TEST_DATABASE_URL at Supabase
+# does not fail loudly; it succeeds, and empties the database. These assert
+# the second guard, the one in conftest, which refuses unconditionally.
+
+from tests.conftest import _require_postgres_test_database_url  # noqa: E402
+
+
+@pytest.mark.parametrize("url", PROD_URLS)
+def test_test_suite_refuses_production_even_in_production(url, monkeypatch):
+    monkeypatch.setenv("TEST_DATABASE_URL", url)
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with pytest.raises(RuntimeError, match="REFUSING TO RUN"):
+        _require_postgres_test_database_url()
+
+
+@pytest.mark.parametrize("url", SAFE_URLS)
+def test_test_suite_accepts_a_disposable_database(url, monkeypatch):
+    """The refusal has to be about the host, not about rejecting everything."""
+    monkeypatch.setenv("TEST_DATABASE_URL", url)
+    assert _require_postgres_test_database_url() == url
+
+
+def test_test_suite_still_refuses_sqlite(monkeypatch):
+    monkeypatch.setenv("TEST_DATABASE_URL", "sqlite:///./sur.db")
+    with pytest.raises(RuntimeError, match="sqlite"):
+        _require_postgres_test_database_url()
+
+
+def test_test_suite_refuses_a_missing_url(monkeypatch):
+    monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="is not set"):
+        _require_postgres_test_database_url()
