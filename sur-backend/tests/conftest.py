@@ -45,6 +45,23 @@ def _require_postgres_test_database_url() -> str:
             "ship as VARCHAR(10) in production while every SQLite-backed test stayed "
             "green. Point this at a real Postgres instance instead."
         )
+
+    # The _clean_database fixture below TRUNCATEs every table after each test.
+    # Pointing this at production would therefore delete all of it, silently
+    # and fast. The app has its own guard (app/config.py) but that one permits
+    # ENVIRONMENT=production; this must refuse unconditionally, because there
+    # is no legitimate reason to run a destructive suite against real data.
+    from sqlalchemy.engine.url import make_url as _make_url
+
+    host = (_make_url(url).host or "").lower()
+    for prod_host in ("pooler.supabase.com", "db.bwwdpjkdxmgfdlyffgzr.supabase.co"):
+        if prod_host in host:
+            raise RuntimeError(
+                f"REFUSING TO RUN: TEST_DATABASE_URL points at the production host "
+                f"{host!r}. This suite TRUNCATEs every table between tests -- running it "
+                "here would destroy real user data. Use the disposable container from "
+                "docker-compose.test.yml."
+            )
     return url
 
 
