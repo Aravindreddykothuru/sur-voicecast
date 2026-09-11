@@ -13,7 +13,7 @@ import type {
 } from "./types";
 
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
-const USER_EMAIL = import.meta.env.VITE_DEV_USER_EMAIL ?? "dev@sur.local";
+export const USER_EMAIL = import.meta.env.VITE_DEV_USER_EMAIL ?? "dev@sur.local";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {

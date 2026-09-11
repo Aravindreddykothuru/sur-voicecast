@@ -5,7 +5,7 @@
 // pings every 20s -- we still show a live connection, just with no stage
 // data until the project is polled directly.
 import { useEffect, useRef, useState } from "react";
-import { API_BASE } from "./api";
+import { API_BASE, USER_EMAIL } from "./api";
 import { PIPELINE_STAGE_ORDER, type PipelineStageKey, type ProjectEvent } from "./types";
 
 export interface StageState {
@@ -64,8 +64,30 @@ function formatEta(seconds: number): string {
 function wsUrl(projectId: string): string {
   const httpBase = API_BASE.replace(/\/$/, "");
   const wsBase = httpBase.replace(/^http/i, "ws");
-  return `${wsBase}/ws/projects/${projectId}`;
+
+  // The server authorizes the subscription before accepting it and closes
+  // with 1008 if this identity doesn't own the project. A browser can't set
+  // headers on a WebSocket handshake, so identity travels as a query param
+  // rather than the Authorization / X-User-Email headers the REST calls use.
+  //
+  // Prefer the real session token: once logged in, sending the dev-stub
+  // email instead would identify the wrong user and get the owner refused
+  // their own project's events.
+  let token: string | null = null;
+  try {
+    const raw = localStorage.getItem("sur.auth");
+    token = raw ? ((JSON.parse(raw) as { token?: string }).token ?? null) : null;
+  } catch {
+    token = null;
+  }
+
+  const identity = token
+    ? `token=${encodeURIComponent(token)}`
+    : `user_email=${encodeURIComponent(USER_EMAIL)}`;
+  return `${wsBase}/ws/projects/${projectId}?${identity}`;
 }
+
+
 
 export function useProjectEvents(projectId: string | null): ProjectEventsState {
   const [state, setState] = useState<ProjectEventsState>({
