@@ -1,0 +1,28 @@
+# Disposable Postgres for the test suite -- NOT the dev/prod database
+# (see docker-compose.yml for that). tmpfs storage means the data directory
+# never touches disk and is gone the moment the container stops; nothing
+# here is meant to persist.
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml up -d
+#   export TEST_DATABASE_URL=postgresql+psycopg2://postgres:test@localhost:5434/test
+#   pytest
+#   docker compose -f docker-compose.test.yml down
+services:
+  db:
+    # -alpine is the same Postgres 16 engine (identical constraint
+    # enforcement, which is the whole point of testing against it) in a
+    # smaller image.
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: test
+    ports:
+      - "5434:5432"  # not 5432/5433 -- both are already taken on dev machines here
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 15

@@ -1,0 +1,10 @@
+{
+  "description": "Transform spoken words into text while preserving emotions, enabling users to clone, translate, and enhance communication across languages.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

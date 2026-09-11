@@ -1,0 +1,33 @@
+# Optional, heavy dependencies for the "real" provider implementations.
+# Install only on a GPU worker: pip install -r requirements-ml.txt
+# Each provider degrades independently -- you can install a subset (e.g. just
+# ASR) and leave the rest on PROVIDER_MODE=mock via per-stage env vars.
+
+faster-whisper==1.0.3
+whisperx==3.1.1
+silero-vad==5.1
+pyannote.audio==3.3.1
+# pyannote.audio 3.3.1 still calls hf_hub_download(..., use_auth_token=...),
+# an alias huggingface_hub dropped in its 1.0 line -- pin below that or
+# Pipeline.from_pretrained() raises TypeError on the gated model download.
+huggingface_hub==0.23.4
+# Undeclared transitive dep: pyannote.audio.tasks.segmentation.mixins imports
+# matplotlib.pyplot at module load time even for inference-only use.
+matplotlib
+torch==2.4.1
+torchaudio==2.4.1
+transformers==4.44.2
+librosa==0.10.2
+soundfile==0.12.1
+
+# Translation
+sentencepiece==0.2.0
+sacremoses==0.1.1
+IndicTransToolkit==1.1.1  # 1.0.3 (originally pinned here) was pulled from PyPI
+
+# TTS: NOT here. CosyVoice2 pins torch==2.3.1, which conflicts with this
+# file's torch==2.4.1 -- see requirements-tts.txt, Dockerfile.worker-tts, and
+# CONTRACTS.md #1 for why it gets its own venv/image/worker.
+
+# Optional lip-resync (P4)
+# wav2lip

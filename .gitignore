@@ -1,0 +1,42 @@
+# --- Secrets -------------------------------------------------------------
+# .env holds the Supabase connection string and AWS keys. .env.example is
+# the credential-free template and IS tracked, hence the un-ignore below.
+.env
+.env.*
+!.env.example
+
+# --- Python --------------------------------------------------------------
+.venv/
+.venv-tts/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# --- Local databases -----------------------------------------------------
+sur.db
+*.sqlite
+*.sqlite3
+
+# --- Uploaded media / pipeline output ------------------------------------
+# LocalStorage's on-disk root: source videos, extracted audio, TTS clips and
+# muxed exports. User data, often large, and now superseded by S3
+# (STORAGE_BACKEND=s3). Some filenames also exceed Windows MAX_PATH, which
+# makes `git add` fail outright.
+data/storage/
+sur-backend/data/
+
+# --- Node / frontend -----------------------------------------------------
+node_modules/
+dist/
+
+# --- Large local tooling and model weights -------------------------------
+# .tools holds ffmpeg, the CosyVoice checkout, w64devkit and multi-GB model
+# checkpoints. None of it belongs in git; see README for how to fetch it.
+.tools/
+
+# --- Scratch / editor ----------------------------------------------------
+Claude outputs/
+.claude/settings.local.json
+.claude/*.lock
+.DS_Store
+Thumbs.db

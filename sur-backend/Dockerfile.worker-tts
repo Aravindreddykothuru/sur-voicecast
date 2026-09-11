@@ -1,0 +1,45 @@
+# Isolated image for the TTS-only Celery worker (queue: q.synthesize).
+# CosyVoice2 needs torch==2.3.1; every other real provider (diarization/ASR/
+# emotion/translation, Dockerfile.worker + requirements-ml.txt) needs
+# torch==2.4.1. They cannot share a venv or an image -- see
+# requirements-tts.txt and CONTRACTS.md #1.
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg git build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /srv
+
+COPY requirements.txt requirements-tts.txt ./
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -r requirements-tts.txt
+
+# CosyVoice2 is a source checkout, not a pip package (requirements-tts.txt
+# comment). Pinned to the commit this provider was built and verified
+# against, not a moving branch head.
+RUN git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git /opt/CosyVoice \
+    && cd /opt/CosyVoice \
+    && git checkout 074ca6d \
+    && git submodule update --init --recursive
+
+# Matcha-TTS's monotonic_align is a Cython extension with no wheel; build it
+# in place against the numpy/Cython versions requirements-tts.txt installed
+# (build-essential above supplies gcc -- no MSVC/mingw workaround needed on
+# Linux, unlike the Windows dev setup).
+RUN cd /opt/CosyVoice/third_party/Matcha-TTS && python setup.py build_ext --inplace
+
+# CosyVoice's own code does `sys.path.append('.../third_party/Matcha-TTS')`
+# at its entry points (webui.py); this provider imports cosyvoice.cli.cosyvoice
+# directly, so both paths are supplied via PYTHONPATH instead.
+ENV PYTHONPATH="/opt/CosyVoice:/opt/CosyVoice/third_party/Matcha-TTS"
+
+COPY app ./app
+
+# Model weights (several GB) are deliberately NOT baked into this image --
+# mount them (see docker-compose.yml's `models-data` volume) and download
+# once with .tools/download_cosyvoice.py or `huggingface-cli download
+# FunAudioLLM/CosyVoice2-0.5B`, same lazy-download policy as every other real
+# provider's weights. TTS_MODEL_NAME points at the mounted path.
+
+CMD ["celery", "-A", "app.celery_app", "worker", "-Q", "q.synthesize", "--loglevel=INFO", "-n", "tts@%h"]

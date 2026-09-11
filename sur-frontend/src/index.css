@@ -1,0 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@200;300;400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'DM Sans', sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  background: #000;
+  color: #fff;
+  font-family: 'DM Sans', sans-serif;
+}
+
+* {
+  font-family: inherit;
+}
+
+/* Landing-style typography for app headings */
+h1, h2, h3 {
+  font-family: 'Sora', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-weight: 200;
+  letter-spacing: 0.04em;
+}
+h1 { font-size: clamp(28px, 3vw, 48px); line-height: 1; }
+h2 { font-size: clamp(18px, 1.8vw, 28px); line-height: 1.1; }
+
+/* Sharp rectangles — match landing aesthetic */
+button, input, select, textarea {
+  border-radius: 0;
+}
+
+/* Cards and panel surfaces */
+.app-card {
+  border-radius: 0 !important;
+}
+
+/* Sharp rectangles — landing aesthetic (preserve .rounded-full for circles/pills) */
+.rounded-xl,
+.rounded-lg,
+.rounded-md,
+.rounded-sm,
+.rounded-2xl {
+  border-radius: 0 !important;
+}
+
+/* Scrollbar — subtle on black */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.28); }

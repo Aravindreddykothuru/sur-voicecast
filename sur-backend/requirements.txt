@@ -1,0 +1,41 @@
+# --- Core API ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+pydantic-settings==2.5.2
+python-multipart==0.0.9
+websockets==13.1
+
+# --- DB ---
+sqlalchemy==2.0.35
+alembic==1.13.3
+psycopg2-binary==2.9.9
+asyncpg==0.29.0
+
+# --- Auth (real password login/signup -- see app/core/security.py) ---
+bcrypt==4.2.0
+pyjwt==2.9.0
+
+# --- Job orchestration ---
+celery==5.4.0
+redis==5.0.8
+flower==2.0.1
+
+# --- Object storage ---
+boto3==1.35.24
+
+# --- Utilities ---
+python-json-logger==2.0.7
+python-dotenv==1.0.1
+tenacity==9.0.0
+orjson==3.10.7
+
+# --- Audio/video tooling (used by providers; CPU-only by default) ---
+ffmpeg-python==0.2.0
+
+# NOTE: heavy ML deps (faster-whisper, torch, transformers, pyannote.audio,
+# IndicTrans2, CosyVoice2, etc.) are intentionally NOT pinned here. They are
+# only required when PROVIDER_MODE=real for the corresponding stage. See
+# requirements-ml.txt and README.md "Running with real models" for the
+# opt-in install path — this keeps `docker-compose up` fast and GPU-free
+# for frontend/API development.

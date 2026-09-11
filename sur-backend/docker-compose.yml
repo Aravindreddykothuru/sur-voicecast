@@ -1,0 +1,167 @@
+version: "3.9"
+
+# HF_TOKEN is passed through from the host environment, never written into
+# the image or this file. Gated weights (pyannote, IndicTrans2) need it; the
+# workers refuse to start without it when those providers are set to real.
+# See CONTRACTS.md #4 and README "Rotating the Hugging Face token".
+x-worker-env: &worker-env
+  HF_TOKEN: ${HF_TOKEN:-}
+  DATABASE_URL: postgresql+psycopg2://sur:sur@postgres:5432/sur
+  ASYNC_DATABASE_URL: postgresql+asyncpg://sur:sur@postgres:5432/sur
+  REDIS_URL: redis://redis:6379/0
+  CELERY_BROKER_URL: redis://redis:6379/1
+  CELERY_RESULT_BACKEND: redis://redis:6379/2
+  STORAGE_ENDPOINT_URL: http://minio:9000
+  STORAGE_PUBLIC_ENDPOINT_URL: http://localhost:9000
+  STORAGE_ACCESS_KEY: sur_minio
+  STORAGE_SECRET_KEY: sur_minio_secret
+  STORAGE_BUCKET: sur-media
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sur
+      POSTGRES_PASSWORD: sur
+      POSTGRES_DB: sur
+    ports: ["5432:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sur"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2024-09-13T20-26-02Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: sur_minio
+      MINIO_ROOT_PASSWORD: sur_minio_secret
+    ports:
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # web console
+    volumes: ["minio-data:/data"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: alembic upgrade head
+    environment:
+      <<: *worker-env
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports: ["8000:8000"]
+    environment:
+      <<: *worker-env
+      API_CORS_ORIGINS: "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    volumes:
+      - ./app:/srv/app  # live-reload friendly bind mount for local dev
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # CPU-bound stages: extraction, muxing. Always mock-safe, never needs a GPU.
+  worker-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      <<: *worker-env
+      ASR_PROVIDER: mock
+      DIARIZATION_PROVIDER: mock
+      TRANSLATION_PROVIDER: mock
+      EMOTION_PROVIDER: mock
+      TTS_PROVIDER: mock
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    command: ["celery", "-A", "app.celery_app", "worker", "-Q", "q.extract_audio,q.mux_export", "--loglevel=INFO", "-n", "cpu@%h"]
+
+  # GPU-bound stages: diarization, ASR, emotion, translation. Runs on
+  # PROVIDER_MODE=mock by default so the whole pipeline works without a GPU
+  # (see README "Running without a GPU") -- flip the *_PROVIDER vars below
+  # to "real" and add a GPU runtime once requirements-ml.txt is installed.
+  # Does NOT run q.synthesize -- see worker-tts below for why.
+  worker-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      <<: *worker-env
+      ASR_PROVIDER: mock
+      DIARIZATION_PROVIDER: mock
+      TRANSLATION_PROVIDER: mock
+      EMOTION_PROVIDER: mock
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    command: ["celery", "-A", "app.celery_app", "worker", "-Q", "q.chunk_and_diarize,q.transcribe,q.detect_emotion,q.translate", "--loglevel=INFO", "-n", "gpu@%h", "--concurrency=2"]
+
+  # TTS only (q.synthesize), in its own image built from
+  # Dockerfile.worker-tts / requirements-tts.txt. CosyVoice2 pins
+  # torch==2.3.1; every provider on worker-gpu needs torch==2.4.1. Installing
+  # both in one image/venv is what the local `.venv` / `.venv-tts` split
+  # avoids and this service mirrors -- see CONTRACTS.md #1 and README
+  # "Running with real models".
+  worker-tts:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker-tts
+    environment:
+      <<: *worker-env
+      TTS_PROVIDER: mock
+      TTS_MODEL_NAME: /srv/models/CosyVoice2-0.5B
+    volumes:
+      # Weights are downloaded once into this volume, not baked into the
+      # image (several GB, same lazy-download policy as every other real
+      # provider). Run .tools/download_cosyvoice.py (or `huggingface-cli
+      # download FunAudioLLM/CosyVoice2-0.5B --local-dir <mount>`) against
+      # this volume before setting TTS_PROVIDER=real.
+      - models-data:/srv/models
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    command: ["celery", "-A", "app.celery_app", "worker", "-Q", "q.synthesize", "--loglevel=INFO", "-n", "tts@%h"]
+
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    command: ["celery", "-A", "app.celery_app", "flower", "--port=5555"]
+    environment:
+      <<: *worker-env
+    ports: ["5555:5555"]
+    depends_on:
+      redis: { condition: service_healthy }
+
+volumes:
+  postgres-data:
+  minio-data:
+  models-data:

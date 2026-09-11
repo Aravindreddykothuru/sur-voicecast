@@ -1,0 +1,90 @@
+name: CI
+
+# CONTRACTS.md names these tests as the guard on three invariants that each
+# shipped a silent bug. They only guard anything if they actually run, so this
+# workflow exists to run them -- in particular the timeline tests, which need
+# real ffmpeg (the bug lived in the ffmpeg invocation, so mocking it would
+# test nothing), and the backend suite, which needs real Postgres (SQLite
+# doesn't enforce column widths, FKs, NOT NULL, unique, or CHECK constraints
+# -- that gap is what let projects.status ship as VARCHAR(10) in production
+# while every SQLite-backed test stayed green; see
+# sur-backend/tests/conftest.py and test_schema_matches_migrations.py).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      CI: "true"          # makes test_ffmpeg_is_available_in_ci fail loudly if ffmpeg is absent
+      TEST_DATABASE_URL: "postgresql+psycopg2://postgres:test@localhost:5434/test"
+      ASR_PROVIDER: mock
+      DIARIZATION_PROVIDER: mock
+      TRANSLATION_PROVIDER: mock
+      EMOTION_PROVIDER: mock
+      TTS_PROVIDER: mock
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # Required: the timeline-accuracy tests measure real audio energy.
+      # Without ffmpeg they would skip, silently leaving the sync invariant
+      # unguarded -- which is why the suite fails rather than skips in CI.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        working-directory: sur-backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests
+        working-directory: sur-backend
+        run: pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: sur-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: sur-frontend
+        run: npm ci || npm install
+
+      - name: Typecheck
+        working-directory: sur-frontend
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: sur-frontend
+        run: npm test
+
+      - name: Build
+        working-directory: sur-frontend
+        run: npm run build

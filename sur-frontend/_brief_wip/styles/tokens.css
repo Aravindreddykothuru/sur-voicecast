@@ -1,0 +1,61 @@
+/**
+ * Design tokens -- the only place visual constants live. Components read
+ * these custom properties (or the Tailwind utilities layered on top in
+ * index.css); nothing hardcodes a hex value or a pixel size inline.
+ *
+ * Visual language only: sidebar shell, white rounded panels on a grey page,
+ * tile grids, a numbered-step modal, solid black primary buttons, muted meta
+ * text. This is NOT a reskin of any specific reference product -- see
+ * capabilities.tsx and every screen under src/screens for why: this app
+ * offers only what sur-backend's /api/capabilities reports.
+ */
+:root {
+  /* Surfaces */
+  --bg-app: #f5f5f4;
+  --bg-panel: #ffffff;
+  --bg-panel-muted: #fafaf9;
+  --bg-hover: #f0f0ef;
+  --border: #e7e5e4;
+  --border-strong: #d6d3d1;
+
+  /* Text */
+  --text-primary: #1c1917;
+  --text-secondary: #57534e;
+  --text-muted: #a8a29e;
+  --text-on-accent: #ffffff;
+
+  /* Accent -- ours, not a reference product's brand color */
+  --accent: #1c1917;
+  --accent-hover: #292524;
+
+  /* Emotion palette, assigned by INDEX at runtime (see src/lib/theme.ts),
+     never by matching a label string. A model swap that renames or
+     reorders labels still gets a stable, distinct color per slot. */
+  --emo-1: #f97066; /* slot 1 */
+  --emo-2: #2e90fa; /* slot 2 */
+  --emo-3: #12b76a; /* slot 3 */
+  --emo-4: #f79009; /* slot 4 */
+  --emo-uncertain: #a8a29e;
+
+  /* Status */
+  --ok: #12b76a;
+  --warn: #f79009;
+  --err: #f04438;
+
+  /* Radii */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+
+  /* Shadow */
+  --shadow-panel: 0 1px 2px rgba(28, 25, 23, 0.04), 0 1px 3px rgba(28, 25, 23, 0.06);
+
+  /* Type */
+  --font: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Layout */
+  --sidebar-w: 260px;
+  --content-max-w: 1200px;
+  --grid: 8px;
+}
