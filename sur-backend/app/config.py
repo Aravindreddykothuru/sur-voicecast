@@ -172,22 +172,27 @@ class Settings(BaseSettings):
                 )
         return self
 
-    @model_validator(mode="after")
-    def _refuse_insecure_secrets_in_production(self) -> "Settings":
-        """Production must not run on the values a dev checkout ships with.
+    def require_secure_production_runtime(self) -> None:
+        """Refuse the values a dev checkout ships with, for processes that
+        actually serve authenticated requests.
+
+        Called from app/main.py at import, NOT from a model validator.
+        Everything loads Settings -- Alembic, Celery, one-off scripts -- and
+        none of those sign or verify a token or answer a CORS preflight.
+        Enforcing it globally meant `alembic upgrade head` against
+        production died with a JWT error, which is both confusing and a
+        reason to reach for a workaround during an incident.
+
+        The database guard stays a model validator, because THAT one does
+        apply to every process: Alembic and Celery must not touch the
+        production database from a dev environment either.
 
         This repository is public, so DEV_JWT_SECRET is not merely weak, it
         is published. HS256 tokens signed with a known key can be forged for
-        any user id, which needs no password and leaves no failed login to
-        notice. That is a worse hole than the X-User-Email stub, because
-        nothing about it looks unusual in a log.
-
-        A crash rather than a warning, for the same reason as the database
-        guard: the convention "remember to set it in production" is exactly
-        what fails.
+        any user id: no password, no failed login, nothing unusual in a log.
         """
         if self.environment.strip().lower() != "production":
-            return self
+            return
 
         secret = self.jwt_secret_key.strip()
         if secret == DEV_JWT_SECRET:
@@ -212,7 +217,6 @@ class Settings(BaseSettings):
                 "lets any site on the internet make authenticated requests as a "
                 "logged-in user. List the real origins instead."
             )
-        return self
 
     # --- Auth ---
     # Falls back to the X-User-Email dev stub (app/core/security.py) when no

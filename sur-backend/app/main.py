@@ -18,6 +18,15 @@ from app.config import get_settings
 from app.logging_conf import configure_logging
 
 settings = get_settings()
+
+# This is the process that signs and verifies session tokens and answers
+# CORS preflights, so this is where the production secret rules are
+# enforced -- at import, before the app can serve a single request. It is
+# deliberately not a Settings validator: Alembic and Celery load Settings
+# too, and making `alembic upgrade head` fail on a JWT error during a
+# production migration is both confusing and an invitation to work around
+# the check.
+settings.require_secure_production_runtime()
 configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 

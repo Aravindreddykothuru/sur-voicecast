@@ -13,13 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.config import MIN_JWT_SECRET_LENGTH, Settings
-
-# Production also refuses the shipped JWT default and wildcard CORS (see
-# test_production_secrets_guard.py). These cases are about the DATABASE
-# guard, so they supply a real secret to isolate it -- otherwise they would
-# pass or fail for the wrong reason.
-PROD_SECRET = "d" * MIN_JWT_SECRET_LENGTH  # pragma: allowlist secret
+from app.config import Settings
 
 PROD_URLS = [
     "postgresql+psycopg2://u:p@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres",
@@ -42,14 +36,14 @@ def test_refuses_to_boot_against_production_outside_production(url, env):
 @pytest.mark.parametrize("url", PROD_URLS)
 def test_production_environment_is_allowed_through(url):
     """The guard must not make production itself unbootable."""
-    s = Settings(environment="production", database_url=url, jwt_secret_key=PROD_SECRET)
+    s = Settings(environment="production", database_url=url)
     assert s.database_url == url
 
 
 @pytest.mark.parametrize("url", SAFE_URLS)
 @pytest.mark.parametrize("env", ["development", "production"])
 def test_non_production_hosts_are_always_allowed(url, env):
-    s = Settings(environment=env, database_url=url, jwt_secret_key=PROD_SECRET)
+    s = Settings(environment=env, database_url=url)
     assert s.database_url == url
 
 
