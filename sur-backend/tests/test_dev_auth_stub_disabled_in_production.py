@@ -22,6 +22,11 @@ import pytest
 
 from app.config import Settings, get_settings
 
+# Production refuses to boot on the shipped defaults (see
+# test_production_secrets_guard.py), so anything constructing production
+# Settings has to supply a real one, exactly as a deployment does.
+VALID_SECRET = "t" * 48  # pragma: allowlist secret
+
 
 @pytest.fixture
 def production_env(monkeypatch):
@@ -29,6 +34,7 @@ def production_env(monkeypatch):
     is cleared on the way in AND on the way out -- leaving a production
     Settings behind would silently re-key every later test."""
     monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("JWT_SECRET_KEY", VALID_SECRET)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -37,7 +43,7 @@ def production_env(monkeypatch):
 # ── the switch itself ───────────────────────────────────────────────────
 @pytest.mark.parametrize("env", ["production", "PRODUCTION", " Production "])
 def test_stub_is_off_in_production_however_spelled(env):
-    assert Settings(environment=env).dev_email_auth_enabled is False
+    assert Settings(environment=env, jwt_secret_key=VALID_SECRET).dev_email_auth_enabled is False
 
 
 @pytest.mark.parametrize("env", ["development", "dev", "test", "staging", ""])

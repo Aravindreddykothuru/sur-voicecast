@@ -15,6 +15,14 @@ from sqlalchemy.engine.url import make_url
 ProviderMode = Literal["mock", "real"]
 
 
+# The signing key a dev checkout gets. Named once so the field default and
+# the production guard below cannot drift apart, and so it is greppable:
+# this repository is public, which means this exact string is public. Any
+# deployment still using it can have session tokens forged for any user.
+DEV_JWT_SECRET = "dev-only-insecure-secret-override-in-production"  # pragma: allowlist secret
+MIN_JWT_SECRET_LENGTH = 32
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -164,6 +172,48 @@ class Settings(BaseSettings):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _refuse_insecure_secrets_in_production(self) -> "Settings":
+        """Production must not run on the values a dev checkout ships with.
+
+        This repository is public, so DEV_JWT_SECRET is not merely weak, it
+        is published. HS256 tokens signed with a known key can be forged for
+        any user id, which needs no password and leaves no failed login to
+        notice. That is a worse hole than the X-User-Email stub, because
+        nothing about it looks unusual in a log.
+
+        A crash rather than a warning, for the same reason as the database
+        guard: the convention "remember to set it in production" is exactly
+        what fails.
+        """
+        if self.environment.strip().lower() != "production":
+            return self
+
+        secret = self.jwt_secret_key.strip()
+        if secret == DEV_JWT_SECRET:
+            raise RuntimeError(
+                "REFUSING TO START: JWT_SECRET_KEY is still the development "
+                "default, and this repository is public, so that value is "
+                "known to everyone. Session tokens could be forged for any "
+                "user. Set JWT_SECRET_KEY in your deploy config to a random "
+                "value, e.g. `python -c \"import secrets; print(secrets.token_urlsafe(48))\"`."
+            )
+        if len(secret) < MIN_JWT_SECRET_LENGTH:
+            raise RuntimeError(
+                f"REFUSING TO START: JWT_SECRET_KEY is {len(secret)} characters; "
+                f"at least {MIN_JWT_SECRET_LENGTH} are required. A short HS256 key "
+                "is brute-forceable offline from a single captured token."
+            )
+
+        if "*" in self.cors_origin_list:
+            raise RuntimeError(
+                "REFUSING TO START: API_CORS_ORIGINS is '*' while credentials are "
+                "allowed (app/main.py sets allow_credentials=True). That combination "
+                "lets any site on the internet make authenticated requests as a "
+                "logged-in user. List the real origins instead."
+            )
+        return self
+
     # --- Auth ---
     # Falls back to the X-User-Email dev stub (app/core/security.py) when no
     # request carries a real bearer token -- keeps every existing route and
@@ -191,7 +241,7 @@ class Settings(BaseSettings):
     # plain default (not a hard-fail) only because this is still a
     # single-user local dev tool; see CONTRACTS.md #4 for the same rule
     # already enforced for HF_TOKEN.
-    jwt_secret_key: str = "dev-only-insecure-secret-override-in-production"
+    jwt_secret_key: str = DEV_JWT_SECRET
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
