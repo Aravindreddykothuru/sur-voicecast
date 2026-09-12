@@ -13,7 +13,7 @@ services:
     # -alpine is the same Postgres 16 engine (identical constraint
     # enforcement, which is the whole point of testing against it) in a
     # smaller image.
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     environment:
       POSTGRES_PASSWORD: test
       POSTGRES_DB: test
