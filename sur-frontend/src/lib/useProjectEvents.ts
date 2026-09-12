@@ -61,7 +61,10 @@ function formatEta(seconds: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-function wsUrl(projectId: string): string {
+// Exported for tests: which identity this URL carries is a security
+// decision (sending the dev-stub email once logged in identifies the
+// wrong user), so it is asserted directly rather than through the hook.
+export function wsUrl(projectId: string): string {
   const httpBase = API_BASE.replace(/\/$/, "");
   const wsBase = httpBase.replace(/^http/i, "ws");
 
